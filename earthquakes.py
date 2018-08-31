@@ -18,6 +18,8 @@ all_coordinates = []
 all_depths = []
 all_magnitudes = []
 all_time_diffs = []
+big_magnitude = 6.0
+earthquakes_after_big = []
 time_diffs_grouped = {}
 
 # Parse verbose argument
@@ -59,6 +61,8 @@ def collect_events():
     years = range(first_year, last_year + 1)  # set range of years
     months = range(1, 13)
     days = range(1, 32)
+    collect_eq_after_big = False
+    big_date = datetime.datetime(first_year, 1, 1)
 
     for year in years:
         for month in months:
@@ -81,7 +85,9 @@ def collect_events():
                         magnitude = "%s" % (params[5].split(' ')[0]) # magnitude
                         
                         # clean data filtering by coordinate or magnitude
-                        if magnitude == '' or magnitude == '0.0' or magnitude == 'Mw' or float(magnitude) < 3.0 or float(latitude) < -60 or float(latitude) > -12 or float(longitude) < -81 or float(longitude) > -60:
+                        if magnitude == '' or magnitude == '0.0' or magnitude == 'Mw' or float(magnitude) < 3.0 or \
+                                float(latitude) < -60 or float(latitude) > -12 or \
+                                float(longitude) < -81 or float(longitude) > -60:
                             continue
 
                         total_earthquakes += 1
@@ -92,6 +98,20 @@ def collect_events():
                         all_longitudes.append(longitude)
                         all_depths.append(float(depth))
                         all_magnitudes.append(float(magnitude))
+
+                        if float(magnitude) >= 6.5:
+                            print(date_time)
+
+                        # if float(magnitude) == big_magnitude and collect_eq_after_big == False:
+                        #     collect_eq_after_big = True
+                        #     big_date = date_time
+                        #     print('date of ' + str(big_magnitude) + ': ' + big_date.isoformat())
+                        # if collect_eq_after_big:
+                        #     earthquakes_after_big.append((date_time, magnitude))
+                        #     if (date_time - big_date).total_seconds() > 2592000:
+                        #         collect_eq_after_big = False
+                        #         print('eqs after big in next 30 days: ' + str(len(earthquakes_after_big)))
+                        #         del earthquakes_after_big[:]
 
                 except urllib.error.HTTPError:
                     continue
@@ -121,102 +141,41 @@ def calculate_cluster_diffs(diff):
     return int(diff // 1) * 1
 
 
-def cluster_time_diffs():
-    factor = (1/len(all_time_diffs) * 100)
-    for diff in all_time_diffs:
-        cluster = calculate_cluster_diffs(diff)
-        if cluster in time_diffs_grouped:
-            time_diffs_grouped[cluster] += factor
-        else:
-            time_diffs_grouped[cluster] = factor
-
-
-def group_data(data):
+def group_data(data, cluster_fn=lambda x: x):
     grouped_data = {}
     factor = (1/len(data) * 100)
     for value in data:
-        if value in grouped_data:
-            grouped_data[value] += factor
+        cluster = cluster_fn(value)
+        if cluster in grouped_data:
+            grouped_data[cluster] += factor
         else:
-            grouped_data[value] = factor
+            grouped_data[cluster] = factor
     return grouped_data
 
 
-def group_magnitudes():
-    factor = (1/len(all_magnitudes) * 100)
-    for magnitude in all_magnitudes:
-        if magnitude in magnitude_grouped:
-            magnitude_grouped[magnitude] += factor
-        else:
-            magnitude_grouped[magnitude] = factor
-
-
-def group_seconds():
-    factor = (1/len(all_seconds) * 100)
-    for second in all_seconds:
-        if second in seconds_grouped:
-            seconds_grouped[second] += factor
-        else:
-            seconds_grouped[second] = factor
-
-
-def group_depths():
-    factor = (1/len(all_depths) * 100)
-    for depth in all_depths:
-        if depth in depth_grouped:
-            depth_grouped[depth] += factor
-        else:
-            depth_grouped[depth] = factor
-
-
-def group_coordinates():
-    factor = (1/len(all_coordinates) * 100)
-    for coord in all_coordinates:
-        if coord in coord_grouped:
-            coord_grouped[coord] += factor
-        else:
-            coord_grouped[coord] = factor
-
-
-def group_latitudes():
-    factor = (1 / len(all_latitudes) * 100)
-    for latitude in all_latitudes:
-        if latitude in lat_grouped:
-            lat_grouped[latitude] += factor
-        else:
-            lat_grouped[latitude] = factor
-
-
-def group_longitudes():
-    factor = (1 / len(all_longitudes) * 100)
-    for longitude in all_longitudes:
-        if longitude in long_grouped:
-            long_grouped[longitude] += factor
-        else:
-            long_grouped[longitude] = factor
-
-
-def save_clusters_diffs_pctg_data():
-    if first_year == last_year:
-        folder = 'reports/' + str(first_year) + '/'
-    else:
-        folder = 'reports/' + str(first_year) + '-' + str(last_year) + '/'
-    filename = folder + 'time_diff_' + str(first_year) + '_' + str(last_year) + '_percentage'
-    # for cluster in range(5000):
-    #     if cluster in time_diffs_grouped:
-    #       write_data(str(cluster) + ',' + '%.2f' % (time_diffs_grouped[cluster]), filename)
-    for k, v in collections.OrderedDict(sorted(time_diffs_grouped.items())).items():
-        write_data(str(k) + ',' + '%.2f' % v, filename + '.csv')
-
-
-def save_grouped_data_with_pctg(dataname, grouped_data):
+def save_grouped_data_with_pctg(dataname, column_label, grouped_data):
     if first_year == last_year:
         folder = 'reports/' + str(first_year) + '/'
     else:
         folder = 'reports/' + str(first_year) + '-' + str(last_year) + '/'
     filename = folder + dataname + '_' + str(first_year) + '_' + str(last_year) + '_percentage'
+    write_data(column_label + ',' + '%', filename + '.csv')
     for k, v in collections.OrderedDict(sorted(grouped_data.items())).items():
         write_data(str(k) + ',' + '%.4f' % v, filename + '.csv')
+
+
+def save_accumulated(dataname, grouped_data):
+    if first_year == last_year:
+        folder = 'reports/' + str(first_year) + '/'
+    else:
+        folder = 'reports/' + str(first_year) + '-' + str(last_year) + '/'
+    filename = folder + dataname + '_' + str(first_year) + '_' + str(last_year) + '_factor'
+    acc = 0
+    write_data('{', filename + '.json')
+    for k, v in collections.OrderedDict(sorted(grouped_data.items())).items():
+        write_data("\"" + str(k) + "\"" + ':' + '%.4f' % (float(acc + v) / 100) + ",", filename + '.json')
+        acc += v
+    write_data('}', filename + '.json')
 
 
 def calculate_most_frequent_event(values_dict):
@@ -239,39 +198,81 @@ def entropy_bits(percentage):
     return '%.4f' % (math.log((1 / prob), 2))
 
 
+def plot_magnitude_date(f, l, m):
+    diff_and_magnitude = []
+    first_day = datetime.datetime(f, 2, 1)
+    last_day = datetime.datetime(l, 12, 31)
+    for i in range(len(all_dates)):
+        if first_day <= all_dates[i] <= last_day and float(all_magnitudes[i]) < m:
+            diff = (all_dates[i] - first_day)
+            diff_and_magnitude.append((diff.total_seconds() / 3600, all_magnitudes[i]))
+            # diff_and_magnitude.append((all_dates[i], all_magnitudes[i]))
+    diff_and_magnitude = sorted(diff_and_magnitude, key=lambda tup: tup[0])
+    plt.scatter(*zip(*diff_and_magnitude))
+    plt.show()
+
+
+def plot_diff_date(f, l, max_diff):
+    date_and_diff = []
+    first_day = datetime.datetime(f, 2, 1)
+    last_day = datetime.datetime(l, 12, 31)
+    for i in range(len(all_dates)):
+        if first_day <= all_dates[i] <= last_day and all_time_diffs[i] < max_diff:
+            diff_with_first = (all_dates[i] - first_day)
+            # date_and_diff.append((diff_with_first.total_seconds() / 3600, all_time_diffs[i]))
+            date_and_diff.append((all_dates[i], all_time_diffs[i]))
+    diff_and_magnitude = sorted(date_and_diff, key=lambda tup: tup[0])
+    plt.scatter(*zip(*diff_and_magnitude))
+    plt.show()
+
+
+def plot_accumulated(data):
+    acc_diff = []
+    acc = 0
+    for k, v in collections.OrderedDict(sorted(data.items())).items():
+        acc_diff.append((k, (acc + v)))
+        acc += v
+    plt.scatter(*zip(*acc_diff))
+    plt.show()
+
+
 print('Collecting Earthquakes from ' + str(first_year) + ' to ' + str(last_year))
 a = collect_events()
+plot_diff_date(first_year, last_year, 30)
+# plot_magnitude_date(first_year, last_year, 10)
 
-print('Grouping Data...')
-seconds_grouped = group_data(all_seconds)
-magnitude_grouped = group_data(all_magnitudes)
-depth_grouped = group_data(all_depths)
-coord_grouped = group_data(all_coordinates)
-lat_grouped = group_data(all_latitudes)
-long_grouped = group_data(all_longitudes)
-cluster_time_diffs()
+# print('Grouping Data...')
+# seconds_grouped = group_data(all_seconds)
+# magnitude_grouped = group_data(all_magnitudes)
+# depth_grouped = group_data(all_depths)
+# coord_grouped = group_data(all_coordinates)
+# lat_grouped = group_data(all_latitudes)
+# long_grouped = group_data(all_longitudes)
+# time_diffs_grouped = group_data(all_time_diffs, cluster_fn=calculate_cluster_diffs)
+# # plot_accumulated(time_diffs_grouped)
+#
+# print('Creating Reports...')
+# save_grouped_data_with_pctg('seconds', 'second mark', seconds_grouped)
+# save_grouped_data_with_pctg('magnitudes', 'magnitude', magnitude_grouped)
+# save_grouped_data_with_pctg('depths', 'depth (km)', depth_grouped)
+# save_grouped_data_with_pctg('coordinates', 'coordinate', coord_grouped)
+# save_grouped_data_with_pctg('latitudes', 'latitude', lat_grouped)
+# save_grouped_data_with_pctg('longitudes', 'longitude', long_grouped)
+# save_grouped_data_with_pctg('time_diff', 'minute-difference between earthquakes', time_diffs_grouped)
+# save_accumulated('acc_time_diff', time_diffs_grouped)
+#
+# # create main report
+# if first_year == last_year:
+#     folder = 'reports/' + str(first_year) + '/'
+# else:
+#     folder = 'reports/' + str(first_year) + '-' + str(last_year) + '/'
+# report_name = folder + 'report_' + str(first_year) + '_' + str(last_year)
+# write_data('TOTAL_EARTHQUAKES: ' + str(a), report_name)
+# write_data(most_frequent(seconds_grouped, 'SECONDS'), report_name)
+# write_data(most_frequent(magnitude_grouped, 'MAGNITUDE'), report_name)
+# write_data(most_frequent(depth_grouped, 'DEPTH'), report_name)
+# write_data(most_frequent(coord_grouped, 'COORDINATES'), report_name)
+# write_data(most_frequent(lat_grouped, 'LATITUDES'), report_name)
+# write_data(most_frequent(long_grouped, 'LONGITUDES'), report_name)
 
-print('Creating Reports...')
-save_grouped_data_with_pctg('seconds', seconds_grouped)
-save_grouped_data_with_pctg('magnitudes', magnitude_grouped)
-save_grouped_data_with_pctg('depths', depth_grouped)
-save_grouped_data_with_pctg('coordinates', coord_grouped)
-save_grouped_data_with_pctg('latitudes', lat_grouped)
-save_grouped_data_with_pctg('longitudes', long_grouped)
-save_clusters_diffs_pctg_data()
-
-# create main report
-if first_year == last_year:
-    folder = 'reports/' + str(first_year) + '/'
-else:
-    folder = 'reports/' + str(first_year) + '-' + str(last_year) + '/'
-report_name = folder + 'report_' + str(first_year) + '_' + str(last_year)
-write_data('TOTAL_EARTHQUAKES: ' + str(a), report_name)
-write_data(most_frequent(seconds_grouped, 'SECONDS'), report_name)
-write_data(most_frequent(magnitude_grouped, 'MAGNITUDE'), report_name)
-write_data(most_frequent(depth_grouped, 'DEPTH'), report_name)
-write_data(most_frequent(coord_grouped, 'COORDINATES'), report_name)
-write_data(most_frequent(lat_grouped, 'LATITUDES'), report_name)
-write_data(most_frequent(long_grouped, 'LONGITUDES'), report_name)
-
-plot_data()
+# plot_data()
